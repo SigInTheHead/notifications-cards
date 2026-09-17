@@ -21,6 +21,7 @@ const CARD_STYLES = `<style>
     border-radius: 8px;
     background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
   }
+  dashboard-notifications-card .item.persistent { grid-template-columns: 36px minmax(0, 1fr); }
   dashboard-notifications-card .severity-success { --notification-accent: var(--success-color, #43a047); }
   dashboard-notifications-card .severity-warning { --notification-accent: var(--warning-color, #f9a825); }
   dashboard-notifications-card .severity-error { --notification-accent: var(--error-color, #db4437); }
@@ -72,7 +73,7 @@ class DashboardNotificationsCard extends HTMLElement {
     if (!Array.isArray(config.topics) || config.topics.length === 0) {
       throw new Error("Dashboard Notifications card requires at least one topic");
     }
-    this._config = { order: "newest", hide_when_empty: false, ...config };
+    this._config = { order: "newest", hide_when_empty: false, show_timestamp: true, ...config };
     this._render();
   }
 
@@ -143,10 +144,13 @@ class DashboardNotificationsCard extends HTMLElement {
     const iconName = item.icon || DEFAULT_ICONS[item.severity] || DEFAULT_ICONS.info;
     const icon = `<ha-icon icon="${this._escape(iconName)}"></ha-icon>`;
     const title = item.title ? `<div class="title">${this._escape(item.title)}</div>` : "";
-    const created = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at));
-    return `<article class="item severity-${this._escape(item.severity || "info")}">
-      <div class="notification-icon">${icon}</div><div class="body">${title}<div class="message">${this._escape(item.message)}</div><time>${created}</time></div>
-      <button class="dismiss" data-id="${this._escape(item.id)}" aria-label="Dismiss notification"><ha-icon icon="mdi:close"></ha-icon></button>
+    const created = this._config.show_timestamp
+      ? `<time>${new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at))}</time>`
+      : "";
+    const dismiss = item.persistent ? "" : `<button class="dismiss" data-id="${this._escape(item.id)}" aria-label="Dismiss notification"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    return `<article class="item ${item.persistent ? "persistent " : ""}severity-${this._escape(item.severity || "info")}">
+      <div class="notification-icon">${icon}</div><div class="body">${title}<div class="message">${this._escape(item.message)}</div>${created}</div>
+      ${dismiss}
     </article>`;
   }
 
@@ -188,7 +192,7 @@ class DashboardNotificationsCard extends HTMLElement {
 
 class DashboardNotificationsCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = { order: "newest", hide_when_empty: false, topics: [], ...config };
+    this._config = { order: "newest", hide_when_empty: false, show_timestamp: true, topics: [], ...config };
     this._render();
   }
 
@@ -245,12 +249,14 @@ class DashboardNotificationsCardEditor extends HTMLElement {
         },
       },
       { name: "hide_when_empty", selector: { boolean: {} } },
+      { name: "show_timestamp", selector: { boolean: {} } },
     ];
     form.computeLabel = (schema) => ({
       title: "Title",
       topics: "Topics",
       order: "Order",
       hide_when_empty: "Hide when empty",
+      show_timestamp: "Show timestamp",
     })[schema.name];
     form.addEventListener("value-changed", (event) => this._changed(event.detail.value));
     this.appendChild(form);
