@@ -7,7 +7,6 @@ const DEFAULT_ICONS = {
   error: "mdi:alert-circle-outline",
 };
 const CARD_STYLES = `<style>
-  dashboard-notifications-card ha-card { overflow: hidden; }
   dashboard-notifications-card .feed { padding: 8px; }
   dashboard-notifications-card .item {
     --notification-accent: var(--primary-color);
@@ -121,6 +120,7 @@ class DashboardNotificationsCard extends HTMLElement {
 
   _render() {
     if (!this._config) return;
+    this._removeWrapperSurface();
     const items = this._items();
     const shouldHide = this._config.hide_when_empty && this._feed && !this._error && items.length === 0;
     this._setVisibility(shouldHide);
@@ -134,7 +134,7 @@ class DashboardNotificationsCard extends HTMLElement {
       : items.length
         ? items.map((item) => this._item(item)).join("")
         : `<div class="empty">No notifications</div>`;
-    this.innerHTML = `${CARD_STYLES}<ha-card>${title}<div class="feed">${content}</div></ha-card>`;
+    this.innerHTML = `${CARD_STYLES}${title}<div class="feed">${content}</div>`;
     this.querySelectorAll("button[data-id]").forEach((button) => {
       button.addEventListener("click", () => this._dismiss(button.dataset.id));
     });
@@ -174,6 +174,17 @@ class DashboardNotificationsCard extends HTMLElement {
       }
     }
     this.style.display = hidden && !wrapper ? "none" : "";
+  }
+
+  _removeWrapperSurface() {
+    // Sections dashboards wrap custom cards in hui-card. Its shadow-root
+    // ha-card owns the remaining surface, so override its inherited tokens.
+    const wrapper = this.closest("hui-card");
+    if (!wrapper) return;
+    wrapper.style.setProperty("--ha-card-background", "transparent");
+    wrapper.style.setProperty("--ha-card-border-width", "0");
+    wrapper.style.setProperty("--ha-card-border-color", "transparent");
+    wrapper.style.setProperty("--ha-card-box-shadow", "none");
   }
 
   _escape(value) {
