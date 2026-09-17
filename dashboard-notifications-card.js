@@ -21,9 +21,10 @@ const CARD_STYLES = `<style>
     background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
   }
   dashboard-notifications-card .item.persistent { grid-template-columns: 36px minmax(0, 1fr); }
-  dashboard-notifications-card .severity-success { --notification-accent: var(--success-color, #43a047); }
-  dashboard-notifications-card .severity-warning { --notification-accent: var(--warning-color, #f9a825); }
-  dashboard-notifications-card .severity-error { --notification-accent: var(--error-color, #db4437); }
+  dashboard-notifications-card .severity-info { --notification-accent: var(--dashboard-notifications-info-color, var(--primary-color)); }
+  dashboard-notifications-card .severity-success { --notification-accent: var(--dashboard-notifications-success-color, var(--success-color, #43a047)); }
+  dashboard-notifications-card .severity-warning { --notification-accent: var(--dashboard-notifications-warning-color, var(--warning-color, #f9a825)); }
+  dashboard-notifications-card .severity-error { --notification-accent: var(--dashboard-notifications-error-color, var(--error-color, #db4437)); }
   dashboard-notifications-card .notification-icon {
     display: grid;
     place-items: center;
@@ -121,6 +122,7 @@ class DashboardNotificationsCard extends HTMLElement {
   _render() {
     if (!this._config) return;
     this._removeWrapperSurface();
+    this._setSeverityColors();
     const items = this._items();
     const shouldHide = this._config.hide_when_empty && this._feed && !this._error && items.length === 0;
     this._setVisibility(shouldHide);
@@ -148,7 +150,8 @@ class DashboardNotificationsCard extends HTMLElement {
       ? `<time>${new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at))}</time>`
       : "";
     const dismiss = item.persistent ? "" : `<button class="dismiss" data-id="${this._escape(item.id)}" aria-label="Dismiss notification"><ha-icon icon="mdi:close"></ha-icon></button>`;
-    return `<article class="item ${item.persistent ? "persistent " : ""}severity-${this._escape(item.severity || "info")}">
+    const topicColor = item.topic_color ? ` style="--notification-accent: ${this._escape(item.topic_color)}"` : "";
+    return `<article class="item ${item.persistent ? "persistent " : ""}severity-${this._escape(item.severity || "info")}"${topicColor}>
       <div class="notification-icon">${icon}</div><div class="body">${title}<div class="message">${this._escape(item.message)}</div>${created}</div>
       ${dismiss}
     </article>`;
@@ -185,6 +188,15 @@ class DashboardNotificationsCard extends HTMLElement {
     wrapper.style.setProperty("--ha-card-border-width", "0");
     wrapper.style.setProperty("--ha-card-border-color", "transparent");
     wrapper.style.setProperty("--ha-card-box-shadow", "none");
+  }
+
+  _setSeverityColors() {
+    const colors = this._feed?.severity_colors || {};
+    for (const severity of ["info", "success", "warning", "error"]) {
+      const property = `--dashboard-notifications-${severity}-color`;
+      if (typeof colors[severity] === "string") this.style.setProperty(property, colors[severity]);
+      else this.style.removeProperty(property);
+    }
   }
 
   _escape(value) {
