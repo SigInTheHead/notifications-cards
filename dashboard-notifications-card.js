@@ -163,6 +163,7 @@ class DashboardNotificationsCard extends HTMLElement {
       button.addEventListener("click", () => this._runAction(
         button.dataset.notificationId,
         Number(button.dataset.actionIndex),
+        button,
       ));
     });
   }
@@ -190,14 +191,26 @@ class DashboardNotificationsCard extends HTMLElement {
     this._hass.callService(DOMAIN, "dismiss", { id });
   }
 
-  _runAction(notificationId, index) {
+  async _runAction(notificationId, index, button) {
     const item = this._feed?.items?.find((candidate) => candidate.id === notificationId);
     const action = item?.actions?.[index];
     if (!action || typeof action.action !== "string") return;
     const [domain, service] = action.action.split(".", 2);
     if (!domain || !service) return;
-    this._hass.callService(domain, service, action.data || {}, action.target)
-      .catch((error) => this._showActionError(action.label, error));
+    const actionKey = `${notificationId}:${index}`;
+    if (this._runningActions?.has(actionKey)) return;
+    this._runningActions ??= new Set();
+    this._runningActions.add(actionKey);
+    button.disabled = true;
+    try {
+      await this._hass.callService(domain, service, action.data || {}, action.target);
+      if (action.dismiss) await this._hass.callService(DOMAIN, "dismiss", { id: notificationId });
+    } catch (error) {
+      this._showActionError(action.label, error);
+    } finally {
+      this._runningActions.delete(actionKey);
+      button.disabled = false;
+    }
   }
 
   _showActionError(label, error) {
