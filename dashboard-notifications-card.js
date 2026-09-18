@@ -188,7 +188,8 @@ class DashboardNotificationsCard extends HTMLElement {
   }
 
   _dismiss(id) {
-    this._hass.callService(DOMAIN, "dismiss", { id });
+    this._callService(DOMAIN, "dismiss", { id })
+      .catch((error) => this._showActionError("Dismiss notification", error));
   }
 
   async _runAction(notificationId, index, button) {
@@ -203,14 +204,31 @@ class DashboardNotificationsCard extends HTMLElement {
     this._runningActions.add(actionKey);
     button.disabled = true;
     try {
-      await this._hass.callService(domain, service, action.data || {}, action.target);
-      if (action.dismiss) await this._hass.callService(DOMAIN, "dismiss", { id: notificationId });
+      await this._callService(domain, service, action.data || {}, action.target);
+      if (action.dismiss) await this._callService(DOMAIN, "dismiss", { id: notificationId });
     } catch (error) {
       this._showActionError(action.label, error);
     } finally {
       this._runningActions.delete(actionKey);
       button.disabled = false;
     }
+  }
+
+  async _callService(domain, service, serviceData = {}, target) {
+    // `callWS` provides an explicit result for each service call. Keeping the
+    // calls here also lets a post-action dismissal wait for the requested
+    // action to finish rather than racing it through the frontend wrapper.
+    if (this._hass?.callWS) {
+      const command = {
+        type: "call_service",
+        domain,
+        service,
+        service_data: serviceData,
+      };
+      if (target && Object.keys(target).length) command.target = target;
+      return this._hass.callWS(command);
+    }
+    return this._hass.callService(domain, service, serviceData, target);
   }
 
   _showActionError(label, error) {
