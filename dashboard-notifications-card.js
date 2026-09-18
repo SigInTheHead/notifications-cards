@@ -11,7 +11,7 @@ const CARD_STYLES = `<style>
   dashboard-notifications-card .item {
     --notification-accent: var(--primary-color);
     display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
     gap: 12px;
     align-items: start;
     margin: 4px 0;
@@ -20,7 +20,6 @@ const CARD_STYLES = `<style>
     border-radius: 8px;
     background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
   }
-  dashboard-notifications-card .item.persistent { grid-template-columns: 36px minmax(0, 1fr); }
   dashboard-notifications-card .severity-info { --notification-accent: var(--dashboard-notifications-info-color, var(--primary-color)); }
   dashboard-notifications-card .severity-success { --notification-accent: var(--dashboard-notifications-success-color, var(--success-color, #43a047)); }
   dashboard-notifications-card .severity-warning { --notification-accent: var(--dashboard-notifications-warning-color, var(--warning-color, #f9a825)); }
@@ -39,7 +38,14 @@ const CARD_STYLES = `<style>
   dashboard-notifications-card .title { color: var(--primary-text-color); font-weight: 600; line-height: 1.35; }
   dashboard-notifications-card .message { margin-top: 3px; color: var(--primary-text-color); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   dashboard-notifications-card time { display: block; margin-top: 7px; color: var(--secondary-text-color); font-size: 0.78rem; line-height: 1; }
-  dashboard-notifications-card .dismiss {
+  dashboard-notifications-card .item-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    align-self: center;
+  }
+  dashboard-notifications-card .dismiss,
+  dashboard-notifications-card .feed-action {
     display: grid;
     place-items: center;
     width: 36px;
@@ -50,8 +56,21 @@ const CARD_STYLES = `<style>
     background: transparent;
     cursor: pointer;
   }
-  dashboard-notifications-card .dismiss:hover { color: var(--primary-text-color); background: var(--divider-color); }
-  dashboard-notifications-card .dismiss ha-icon { --mdc-icon-size: 20px; }
+  dashboard-notifications-card .dismiss:hover,
+  dashboard-notifications-card .feed-action:hover { color: var(--primary-text-color); background: var(--divider-color); }
+  dashboard-notifications-card .dismiss,
+  dashboard-notifications-card .feed-action {
+    color: var(--notification-accent);
+    background: var(--card-background-color);
+  }
+  dashboard-notifications-card .dismiss:hover,
+  dashboard-notifications-card .feed-action:hover {
+    color: var(--notification-accent);
+    background: var(--card-background-color);
+    filter: brightness(1.1);
+  }
+  dashboard-notifications-card .dismiss ha-icon,
+  dashboard-notifications-card .feed-action ha-icon { --mdc-icon-size: 20px; }
   dashboard-notifications-card .empty { padding: 28px 16px; color: var(--secondary-text-color); text-align: center; }
   dashboard-notifications-card .error { color: var(--error-color); }
   @media (max-width: 420px) {
@@ -140,6 +159,12 @@ class DashboardNotificationsCard extends HTMLElement {
     this.querySelectorAll("button[data-id]").forEach((button) => {
       button.addEventListener("click", () => this._dismiss(button.dataset.id));
     });
+    this.querySelectorAll("button[data-action-index]").forEach((button) => {
+      button.addEventListener("click", () => this._runAction(
+        button.dataset.notificationId,
+        Number(button.dataset.actionIndex),
+      ));
+    });
   }
 
   _item(item) {
@@ -149,16 +174,38 @@ class DashboardNotificationsCard extends HTMLElement {
     const created = this._config.show_timestamp
       ? `<time>${new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at))}</time>`
       : "";
-    const dismiss = item.persistent ? "" : `<button class="dismiss" data-id="${this._escape(item.id)}" aria-label="Dismiss notification"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    const actions = Array.isArray(item.actions)
+      ? item.actions.map((action, index) => `<button class="feed-action" data-notification-id="${this._escape(item.id)}" data-action-index="${index}" title="${this._escape(action.label)}" aria-label="${this._escape(action.label)}"><ha-icon icon="${this._escape(action.icon)}"></ha-icon></button>`).join("")
+      : "";
+    const dismiss = item.persistent ? "" : `<button class="dismiss" data-id="${this._escape(item.id)}" aria-label="Dismiss notification" title="Dismiss notification"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    const itemActions = actions || dismiss ? `<div class="item-actions">${actions}${dismiss}</div>` : "";
     const topicColor = item.topic_color ? ` style="--notification-accent: ${this._escape(item.topic_color)}"` : "";
     return `<article class="item ${item.persistent ? "persistent " : ""}severity-${this._escape(item.severity || "info")}"${topicColor}>
       <div class="notification-icon">${icon}</div><div class="body">${title}<div class="message">${this._escape(item.message)}</div>${created}</div>
-      ${dismiss}
+      ${itemActions}
     </article>`;
   }
 
   _dismiss(id) {
     this._hass.callService(DOMAIN, "dismiss", { id });
+  }
+
+  _runAction(notificationId, index) {
+    const item = this._feed?.items?.find((candidate) => candidate.id === notificationId);
+    const action = item?.actions?.[index];
+    if (!action || typeof action.action !== "string") return;
+    const [domain, service] = action.action.split(".", 2);
+    if (!domain || !service) return;
+    this._hass.callService(domain, service, action.data || {}, action.target)
+      .catch((error) => this._showActionError(action.label, error));
+  }
+
+  _showActionError(label, error) {
+    this.dispatchEvent(new CustomEvent("hass-notification", {
+      bubbles: true,
+      composed: true,
+      detail: { message: `Could not run “${label}”: ${error?.message || error}` },
+    }));
   }
 
   _setVisibility(hidden) {
