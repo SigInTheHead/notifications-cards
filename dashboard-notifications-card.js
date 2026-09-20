@@ -299,7 +299,12 @@ class DashboardNotificationsCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._loadTopics();
+    // Home Assistant supplies a new hass object on every state update.
+    // Reloading here replaces the form and closes an open topic picker.
+    if (!this._topicsLoaded) {
+      this._topicsLoaded = true;
+      this._loadTopics();
+    }
   }
 
   async _loadTopics() {
