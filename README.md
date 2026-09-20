@@ -21,4 +21,4 @@ Set `show_timestamp: false` to hide each notification's creation timestamp.
 
 ## Notification actions
 
-Notifications created with an `actions` list display icon buttons on the card. An action can call any Home Assistant service, with optional service `data` and `target`. Set its `dismiss` option to `true` to remove the notification after that service succeeds; if it fails, the notification stays visible and the card shows an error. Configure actions in the companion integration's notification create service.
+Notifications created with an `actions` list display icon buttons on the card. The list supports one or more actions, with one button shown for each. An action can call any Home Assistant service, with optional service `data` and `target`. Set its `dismiss` option to `true` to remove the notification after that service succeeds; if it fails, the notification stays visible and the card shows an error. Configure actions in the companion integration's notification create service.
