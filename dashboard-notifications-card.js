@@ -172,7 +172,9 @@ class DashboardNotificationsCard extends HTMLElement {
     const iconName = item.icon || DEFAULT_ICONS[item.severity] || DEFAULT_ICONS.info;
     const icon = `<ha-icon icon="${this._escape(iconName)}"></ha-icon>`;
     const title = item.title ? `<div class="title">${this._escape(item.title)}</div>` : "";
-    const created = this._config.show_timestamp
+    // New notifications choose this individually in the create action. Keep the
+    // card setting as a fallback for notifications saved before that option.
+    const created = (item.show_timestamp ?? this._config.show_timestamp)
       ? `<time>${new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at))}</time>`
       : "";
     const actions = Array.isArray(item.actions)
