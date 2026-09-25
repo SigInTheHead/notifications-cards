@@ -97,33 +97,73 @@ class DashboardNotificationsCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const connectionChanged = this._hass?.connection && this._hass.connection !== hass.connection;
     this._hass = hass;
+    if (connectionChanged) this._resetSubscription();
     this._subscribe();
-    this._render();
   }
 
   disconnectedCallback() {
-    this._unsubscribe?.();
-    this._unsubscribe = undefined;
+    this._resetSubscription();
   }
 
   async _subscribe() {
     if (!this._hass?.connection || this._subscribed) return;
     this._subscribed = true;
+    const requestId = this._subscriptionRequestId = (this._subscriptionRequestId || 0) + 1;
     try {
       // A subscription only supplies later changes; fetch the current feed first.
-      this._feed = await this._hass.callWS({ type: `${DOMAIN}/list` });
+      const feed = await this._withTimeout(
+        this._hass.callWS({ type: `${DOMAIN}/list` }), 10000,
+      );
+      if (requestId !== this._subscriptionRequestId) return;
+      this._feed = feed;
+      this._error = undefined;
       this._render();
-      this._unsubscribe = await this._hass.connection.subscribeMessage(
+      const unsubscribe = await this._hass.connection.subscribeMessage(
         (event) => {
           this._feed = event.event || event;
           this._render();
         },
         { type: `${DOMAIN}/subscribe` },
       );
+      if (requestId !== this._subscriptionRequestId) {
+        unsubscribe();
+        return;
+      }
+      this._unsubscribe = unsubscribe;
     } catch (error) {
+      if (requestId !== this._subscriptionRequestId) return;
       this._error = error;
+      this._subscribed = false;
       this._render();
+      this._retryTimer = setTimeout(() => {
+        this._retryTimer = undefined;
+        this._subscribe();
+      }, 5000);
+    }
+  }
+
+  _resetSubscription() {
+    this._subscriptionRequestId = (this._subscriptionRequestId || 0) + 1;
+    this._unsubscribe?.();
+    this._unsubscribe = undefined;
+    this._subscribed = false;
+    clearTimeout(this._retryTimer);
+    this._retryTimer = undefined;
+  }
+
+  async _withTimeout(promise, timeout) {
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Notification feed request timed out")), timeout);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -143,7 +183,8 @@ class DashboardNotificationsCard extends HTMLElement {
     this._removeWrapperSurface();
     this._setSeverityColors();
     const items = this._items();
-    const shouldHide = this._config.hide_when_empty && this._feed && !this._error && items.length === 0;
+    const loading = !this._feed && !this._error;
+    const shouldHide = this._config.hide_when_empty && !this._error && (loading || items.length === 0);
     this._setVisibility(shouldHide);
     if (shouldHide) {
       this.replaceChildren();
@@ -152,6 +193,8 @@ class DashboardNotificationsCard extends HTMLElement {
     const title = this._config.title ? `<h1 class="card-header">${this._escape(this._config.title)}</h1>` : "";
     const content = this._error
       ? `<div class="empty">Unable to load notification feed.</div>`
+      : loading
+        ? `<div class="empty">Loading notifications…</div>`
       : items.length
         ? items.map((item) => this._item(item)).join("")
         : `<div class="empty">No notifications</div>`;
